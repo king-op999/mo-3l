@@ -10,7 +10,7 @@ app = Flask(__name__)
 # ============= CONFIG =============
 BOT_NAME = "@BRONX_ULTRA"
 POLLINATIONS_URL = "https://text.pollinations.ai"
-DEFAULT_MODEL = "openai"
+DEFAULT_MODEL = "Deepsheek-instant-expert"
 
 # ============= HTML TEMPLATE =============
 HTML_TEMPLATE = """
