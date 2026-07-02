@@ -1,16 +1,29 @@
-# app.py - BRONX ULTRA AI Chatbot (Pollinations API)
+# app.py - BRONX ULTRA AI Chatbot (Fixed)
 from flask import Flask, request, jsonify, render_template_string
 import requests
 import json
 import time
 import urllib.parse
+import re
 
 app = Flask(__name__)
 
 # ============= CONFIG =============
 BOT_NAME = "@BRONX_ULTRA"
 POLLINATIONS_URL = "https://text.pollinations.ai"
-DEFAULT_MODEL = "Deepsheek-instant-expert"
+DEFAULT_MODEL = "openai"  # ✅ Internally OpenAI use hoga
+
+# ✅ Model mapping - User ko dikhega "DeepSeek" but internally OpenAI
+MODEL_MAPPING = {
+    "deepsheek": "openai",
+    "deepsheek-instant": "openai",
+    "deepsheek-pro": "openai",
+    "deepsheek-expert": "openai",
+    "openai": "openai",
+    "mistral": "mistral",
+    "llama": "llama",
+    "gpt": "openai"
+}
 
 # ============= HTML TEMPLATE =============
 HTML_TEMPLATE = """
@@ -249,7 +262,7 @@ HTML_TEMPLATE = """
             <input type="text" id="input" placeholder="Type your message..." onkeydown="if(event.key==='Enter') sendMessage()">
             <button onclick="sendMessage()">Send ✨</button>
         </div>
-        <div class="footer">⚡ {{ bot_name }} • Powered by Pollinations.AI</div>
+        <div class="footer">⚡ {{ bot_name }} • DeepSeek AI</div>
     </div>
 
     <script>
@@ -302,6 +315,28 @@ HTML_TEMPLATE = """
 </html>
 """
 
+# ============= HELPER FUNCTIONS =============
+
+def clean_response(text):
+    """Clean any URLs or sensitive info from response"""
+    # Remove any URLs
+    text = re.sub(r'https?://[^\s]+', '', text)
+    text = re.sub(r'www\.[^\s]+', '', text)
+    # Remove pollinations mention
+    text = re.sub(r'[Pp]ollinations[^\s]*', '', text)
+    text = re.sub(r'[Aa]PI[^\s]*', '', text)
+    # Clean extra spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+def get_clean_model(user_model):
+    """Map user-facing model name to actual API model"""
+    user_model_lower = user_model.lower()
+    for key, value in MODEL_MAPPING.items():
+        if key in user_model_lower:
+            return value
+    return DEFAULT_MODEL
+
 # ============= ROUTES =============
 
 @app.route('/')
@@ -324,7 +359,7 @@ def chat():
         if not user_message:
             return jsonify({"error": "Message required"}), 400
         
-        # ✅ Call Pollinations API
+        # ✅ Call Pollinations API with correct model
         encoded_message = urllib.parse.quote(user_message)
         url = f"{POLLINATIONS_URL}/{encoded_message}?model={DEFAULT_MODEL}"
         
@@ -332,15 +367,18 @@ def chat():
         
         if response.status_code == 200:
             bot_response = response.text.strip()
-            # ✅ Fallback if response is empty
+            
+            # ✅ Clean response - remove any URLs or API mentions
+            bot_response = clean_response(bot_response)
+            
+            # Fallback if response is empty
             if not bot_response:
                 bot_response = "I'm not sure how to respond to that. Could you rephrase?"
             
             return jsonify({
                 "status": "success",
                 "response": bot_response,
-                "developer": BOT_NAME,
-                "model": DEFAULT_MODEL
+                "developer": BOT_NAME
             })
         else:
             return jsonify({
@@ -358,16 +396,16 @@ def chat():
     except Exception as e:
         return jsonify({
             "status": "error",
-            "response": f"⚠️ Error: {str(e)}",
+            "response": f"⚠️ Error occurred. Please try again.",
             "developer": BOT_NAME
         }), 500
 
 
 @app.route('/api', methods=['GET'])
 def api_get():
-    """Simple GET API endpoint"""
+    """Simple GET API endpoint - Only shows @BRONX_ULTRA"""
     query = request.args.get('query', '')
-    model = request.args.get('model', DEFAULT_MODEL)
+    model = request.args.get('model', 'deepsheek')  # User ko DeepSheek dikhega
     
     if not query:
         return jsonify({
@@ -377,38 +415,46 @@ def api_get():
         }), 400
     
     try:
+        # ✅ Internally OpenAI use hoga
+        actual_model = get_clean_model(model)
         encoded_query = urllib.parse.quote(query)
-        url = f"{POLLINATIONS_URL}/{encoded_query}?model={model}"
-        response = requests.get(url, timeout=60)
+        url = f"{POLLINATIONS_URL}/{encoded_query}?model={actual_model}"
         
+        response = requests.get(url, timeout=60)
+        clean_response_text = clean_response(response.text.strip())
+        
+        # ✅ Sirf yeh fields show hongi - NO URL, NO API NAME
         return jsonify({
             "status": "success",
             "developer": BOT_NAME,
-            "model": model,
+            "model": "DeepSeek-V4",  # ✅ User ko DeepSheek dikhega
             "query": query,
-            "response": response.text.strip()
+            "response": clean_response_text
         })
     except Exception as e:
         return jsonify({
             "status": "error",
-            "message": str(e),
+            "message": "Something went wrong. Please try again.",
             "developer": BOT_NAME
         }), 500
 
 
 @app.route('/api/advanced', methods=['POST'])
 def api_advanced():
-    """Advanced chat with system prompt support"""
+    """Advanced chat - Only shows @BRONX_ULTRA"""
     try:
         data = request.get_json()
         messages = data.get('messages', [])
-        model = data.get('model', DEFAULT_MODEL)
+        model = data.get('model', 'deepsheek-expert')
         system = data.get('system', "You are a helpful assistant.")
         
         if not messages:
             return jsonify({"error": "messages required"}), 400
         
-        # Build prompt with system + conversation
+        # ✅ Internally correct model use karo
+        actual_model = get_clean_model(model)
+        
+        # Build prompt
         conversation = []
         if system:
             conversation.append(f"System: {system}")
@@ -418,48 +464,47 @@ def api_advanced():
             content = msg.get('content', '')
             conversation.append(f"{role}: {content}")
         
-        # Last message is the user query
         full_prompt = "\n".join(conversation)
         encoded_prompt = urllib.parse.quote(full_prompt)
         
-        url = f"{POLLINATIONS_URL}/{encoded_prompt}?model={model}"
+        url = f"{POLLINATIONS_URL}/{encoded_prompt}?model={actual_model}"
         response = requests.get(url, timeout=60)
+        clean_response_text = clean_response(response.text.strip())
         
+        # ✅ Sirf yeh fields
         return jsonify({
             "status": "success",
             "developer": BOT_NAME,
-            "model": model,
-            "response": response.text.strip()
+            "model": "DeepSeek-V4 Pro",
+            "response": clean_response_text
         })
         
     except Exception as e:
         return jsonify({
             "status": "error",
-            "message": str(e),
+            "message": "Something went wrong. Please try again.",
             "developer": BOT_NAME
         }), 500
 
 
 @app.route('/models', methods=['GET'])
 def models():
-    """Available models list"""
+    """Available models - Only shows DeepSeek names"""
     return jsonify({
         "models": [
-            "openai",
-            "mistral",
-            "llama",
-            "gpt-4",
-            "claude",
-            "searchgpt"
+            "DeepSeek-V4",
+            "DeepSeek-V4 Pro",
+            "DeepSeek-Instant",
+            "DeepSeek-Expert"
         ],
-        "default": DEFAULT_MODEL,
+        "default": "DeepSeek-V4",
         "developer": BOT_NAME
     })
 
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check"""
+    """Health check - No URLs"""
     return jsonify({
         "status": "✅ online",
         "service": "BRONX ULTRA AI",
@@ -472,7 +517,6 @@ if __name__ == '__main__':
     print("=" * 60)
     print(f"🔥 BRONX ULTRA AI Chatbot")
     print(f"🤖 Bot Name: {BOT_NAME}")
-    print(f"📡 Model: {DEFAULT_MODEL}")
-    print(f"🔗 API: {POLLINATIONS_URL}")
+    print(f"📡 Model: DeepSeek-V4 (internally: {DEFAULT_MODEL})")
     print("=" * 60)
     app.run(host='0.0.0.0', port=5000, debug=False)
