@@ -1,29 +1,31 @@
-# app.py - BRONX ULTRA AI Chatbot (Fixed)
-from flask import Flask, request, jsonify, render_template_string
-import requests
+# app.py - BRONX ULTRA AI Chatbot (NVIDIA DeepSeek API)
+from flask import Flask, request, jsonify, render_template_string, Response
+from openai import OpenAI
 import json
 import time
-import urllib.parse
 import re
+from datetime import datetime
 
 app = Flask(__name__)
 
 # ============= CONFIG =============
 BOT_NAME = "@BRONX_ULTRA"
-POLLINATIONS_URL = "https://text.pollinations.ai"
-DEFAULT_MODEL = "openai"  # ✅ Internally OpenAI use hoga
+DEVELOPER = "@BRONX_ULTRA"
 
-# ✅ Model mapping - User ko dikhega "DeepSeek" but internally OpenAI
-MODEL_MAPPING = {
-    "deepsheek": "openai",
-    "deepsheek-instant": "openai",
-    "deepsheek-pro": "openai",
-    "deepsheek-expert": "openai",
-    "openai": "openai",
-    "mistral": "mistral",
-    "llama": "llama",
-    "gpt": "openai"
+# ✅ NVIDIA API Client
+client = OpenAI(
+    base_url="https://integrate.api.nvidia.com/v1",
+    api_key="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"
+)
+
+# ✅ Display names mapping (Fake names for users)
+DISPLAY_NAMES = {
+    "deepseek-ai/deepseek-v4-pro": "Gemini 2.0 Flash",
+    "deepseek-ai/deepseek-r1": "DeepSeek R1"
 }
+
+# Default model
+DEFAULT_MODEL = "deepseek-ai/deepseek-v4-pro"
 
 # ============= HTML TEMPLATE =============
 HTML_TEMPLATE = """
@@ -219,6 +221,25 @@ HTML_TEMPLATE = """
             cursor: not-allowed;
             transform: none;
         }
+        .model-selector {
+            padding: 10px 24px;
+            background: rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.6);
+        }
+        .model-selector select {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(191,0,255,0.2);
+            color: #bf00ff;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            outline: none;
+            cursor: pointer;
+        }
         .footer {
             text-align: center;
             padding: 8px;
@@ -245,11 +266,20 @@ HTML_TEMPLATE = """
             <h1>🤖 BRONX AI</h1>
             <span class="badge">⚡ {{ bot_name }}</span>
         </div>
+        <div class="model-selector">
+            <span>🧠 Model:</span>
+            <select id="modelSelect" onchange="changeModel()">
+                {% for key, name in models.items() %}
+                <option value="{{ key }}" {% if key == default_model %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
         <div class="chat-messages" id="messages">
             <div class="message bot">
                 <div class="avatar">🤖</div>
                 <div class="bubble">
                     Hey! I'm <strong>{{ bot_name }}</strong> 👋<br>
+                    Powered by <strong>{{ current_model }}</strong><br>
                     Ask me anything!
                     <div class="time">{{ time }}</div>
                 </div>
@@ -262,13 +292,20 @@ HTML_TEMPLATE = """
             <input type="text" id="input" placeholder="Type your message..." onkeydown="if(event.key==='Enter') sendMessage()">
             <button onclick="sendMessage()">Send ✨</button>
         </div>
-        <div class="footer">⚡ {{ bot_name }} • DeepSeek AI</div>
+        <div class="footer">⚡ {{ bot_name }} • {{ current_model }}</div>
     </div>
 
     <script>
         const messages = document.getElementById('messages');
         const input = document.getElementById('input');
         const typing = document.getElementById('typing');
+        let currentModel = document.getElementById('modelSelect').value;
+
+        function changeModel() {
+            currentModel = document.getElementById('modelSelect').value;
+            const modelName = document.getElementById('modelSelect').selectedOptions[0].text;
+            document.querySelector('.footer').innerHTML = `⚡ {{ bot_name }} • ${modelName}`;
+        }
 
         function addMessage(text, sender) {
             const div = document.createElement('div');
@@ -296,7 +333,10 @@ HTML_TEMPLATE = """
                 const response = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text })
+                    body: JSON.stringify({ 
+                        message: text,
+                        model: currentModel
+                    })
                 });
                 const data = await response.json();
                 typing.style.display = 'none';
@@ -319,33 +359,28 @@ HTML_TEMPLATE = """
 
 def clean_response(text):
     """Clean any URLs or sensitive info from response"""
-    # Remove any URLs
     text = re.sub(r'https?://[^\s]+', '', text)
     text = re.sub(r'www\.[^\s]+', '', text)
-    # Remove pollinations mention
-    text = re.sub(r'[Pp]ollinations[^\s]*', '', text)
-    text = re.sub(r'[Aa]PI[^\s]*', '', text)
-    # Clean extra spaces
+    text = re.sub(r'[Nn]VIDIA[^\s]*', '', text)
+    text = re.sub(r'deepseek[^\s]*', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-def get_clean_model(user_model):
-    """Map user-facing model name to actual API model"""
-    user_model_lower = user_model.lower()
-    for key, value in MODEL_MAPPING.items():
-        if key in user_model_lower:
-            return value
-    return DEFAULT_MODEL
+def get_display_name(model_key):
+    """Get fake display name for model"""
+    return DISPLAY_NAMES.get(model_key, "BRONX AI")
 
 # ============= ROUTES =============
 
 @app.route('/')
 def home():
     """Main chat interface"""
-    from datetime import datetime
     return render_template_string(
         HTML_TEMPLATE,
         bot_name=BOT_NAME,
+        models=DISPLAY_NAMES,
+        default_model=DEFAULT_MODEL,
+        current_model=DISPLAY_NAMES[DEFAULT_MODEL],
         time=datetime.now().strftime("%I:%M %p")
     )
 
@@ -355,160 +390,141 @@ def chat():
     try:
         data = request.get_json()
         user_message = data.get('message', '').strip()
+        model_key = data.get('model', DEFAULT_MODEL)
         
         if not user_message:
             return jsonify({"error": "Message required"}), 400
         
-        # ✅ Call Pollinations API with correct model
-        encoded_message = urllib.parse.quote(user_message)
-        url = f"{POLLINATIONS_URL}/{encoded_message}?model={DEFAULT_MODEL}"
+        # ✅ Call NVIDIA DeepSeek API
+        completion = client.chat.completions.create(
+            model=model_key,
+            messages=[{"role": "user", "content": user_message}],
+            temperature=1,
+            top_p=0.95,
+            max_tokens=16384,
+            extra_body={"chat_template_kwargs": {"thinking": False}},
+            stream=False
+        )
         
-        response = requests.get(url, timeout=60)
+        bot_response = completion.choices[0].message.content
+        bot_response = clean_response(bot_response)
         
-        if response.status_code == 200:
-            bot_response = response.text.strip()
-            
-            # ✅ Clean response - remove any URLs or API mentions
-            bot_response = clean_response(bot_response)
-            
-            # Fallback if response is empty
-            if not bot_response:
-                bot_response = "I'm not sure how to respond to that. Could you rephrase?"
-            
-            return jsonify({
-                "status": "success",
-                "response": bot_response,
-                "developer": BOT_NAME
-            })
-        else:
-            return jsonify({
-                "status": "error",
-                "response": "Sorry, I'm having trouble connecting. Please try again.",
-                "developer": BOT_NAME
-            }), 503
-            
-    except requests.exceptions.Timeout:
+        if not bot_response:
+            bot_response = "I'm not sure how to respond to that. Could you rephrase?"
+        
         return jsonify({
-            "status": "error",
-            "response": "⏳ Request timed out. Please try again.",
-            "developer": BOT_NAME
-        }), 504
+            "status": "success",
+            "response": bot_response,
+            "model": get_display_name(model_key),
+            "developer": DEVELOPER
+        })
+        
     except Exception as e:
         return jsonify({
             "status": "error",
-            "response": f"⚠️ Error occurred. Please try again.",
-            "developer": BOT_NAME
+            "response": f"⚠️ Error: {str(e)[:100]}",
+            "developer": DEVELOPER
         }), 500
+
+
+@app.route('/chat/stream', methods=['POST'])
+def chat_stream():
+    """Streaming chat endpoint"""
+    try:
+        data = request.get_json()
+        user_message = data.get('message', '').strip()
+        model_key = data.get('model', DEFAULT_MODEL)
+        
+        if not user_message:
+            return jsonify({"error": "Message required"}), 400
+        
+        def generate():
+            try:
+                completion = client.chat.completions.create(
+                    model=model_key,
+                    messages=[{"role": "user", "content": user_message}],
+                    temperature=1,
+                    top_p=0.95,
+                    max_tokens=16384,
+                    extra_body={"chat_template_kwargs": {"thinking": False}},
+                    stream=True
+                )
+                
+                for chunk in completion:
+                    if not getattr(chunk, "choices", None):
+                        continue
+                    if chunk.choices and chunk.choices[0].delta.content is not None:
+                        content = chunk.choices[0].delta.content
+                        yield f"data: {json.dumps({'content': content})}\n\n"
+                
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        
+        return Response(generate(), mimetype='text/event-stream')
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api', methods=['GET'])
 def api_get():
-    """Simple GET API endpoint - Only shows @BRONX_ULTRA"""
+    """Simple GET API endpoint"""
     query = request.args.get('query', '')
-    model = request.args.get('model', 'deepsheek')  # User ko DeepSheek dikhega
+    model_key = request.args.get('model', DEFAULT_MODEL)
     
     if not query:
         return jsonify({
             "status": "error",
             "message": "Query parameter required. Usage: /api?query=Hello",
-            "developer": BOT_NAME
+            "developer": DEVELOPER
         }), 400
     
     try:
-        # ✅ Internally OpenAI use hoga
-        actual_model = get_clean_model(model)
-        encoded_query = urllib.parse.quote(query)
-        url = f"{POLLINATIONS_URL}/{encoded_query}?model={actual_model}"
+        completion = client.chat.completions.create(
+            model=model_key,
+            messages=[{"role": "user", "content": query}],
+            temperature=1,
+            top_p=0.95,
+            max_tokens=16384,
+            extra_body={"chat_template_kwargs": {"thinking": False}},
+            stream=False
+        )
         
-        response = requests.get(url, timeout=60)
-        clean_response_text = clean_response(response.text.strip())
+        response_text = clean_response(completion.choices[0].message.content)
         
-        # ✅ Sirf yeh fields show hongi - NO URL, NO API NAME
         return jsonify({
             "status": "success",
-            "developer": BOT_NAME,
-            "model": "DeepSeek-V4",  # ✅ User ko DeepSheek dikhega
+            "developer": DEVELOPER,
+            "model": get_display_name(model_key),
             "query": query,
-            "response": clean_response_text
+            "response": response_text
         })
     except Exception as e:
         return jsonify({
             "status": "error",
-            "message": "Something went wrong. Please try again.",
-            "developer": BOT_NAME
-        }), 500
-
-
-@app.route('/api/advanced', methods=['POST'])
-def api_advanced():
-    """Advanced chat - Only shows @BRONX_ULTRA"""
-    try:
-        data = request.get_json()
-        messages = data.get('messages', [])
-        model = data.get('model', 'deepsheek-expert')
-        system = data.get('system', "You are a helpful assistant.")
-        
-        if not messages:
-            return jsonify({"error": "messages required"}), 400
-        
-        # ✅ Internally correct model use karo
-        actual_model = get_clean_model(model)
-        
-        # Build prompt
-        conversation = []
-        if system:
-            conversation.append(f"System: {system}")
-        
-        for msg in messages:
-            role = msg.get('role', 'user')
-            content = msg.get('content', '')
-            conversation.append(f"{role}: {content}")
-        
-        full_prompt = "\n".join(conversation)
-        encoded_prompt = urllib.parse.quote(full_prompt)
-        
-        url = f"{POLLINATIONS_URL}/{encoded_prompt}?model={actual_model}"
-        response = requests.get(url, timeout=60)
-        clean_response_text = clean_response(response.text.strip())
-        
-        # ✅ Sirf yeh fields
-        return jsonify({
-            "status": "success",
-            "developer": BOT_NAME,
-            "model": "DeepSeek-V4 Pro",
-            "response": clean_response_text
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": "Something went wrong. Please try again.",
-            "developer": BOT_NAME
+            "message": str(e)[:100],
+            "developer": DEVELOPER
         }), 500
 
 
 @app.route('/models', methods=['GET'])
 def models():
-    """Available models - Only shows DeepSeek names"""
+    """Available models"""
     return jsonify({
-        "models": [
-            "DeepSeek-V4",
-            "DeepSeek-V4 Pro",
-            "DeepSeek-Instant",
-            "DeepSeek-Expert"
-        ],
-        "default": "DeepSeek-V4",
-        "developer": BOT_NAME
+        "models": list(DISPLAY_NAMES.values()),
+        "developer": DEVELOPER
     })
 
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check - No URLs"""
+    """Health check"""
     return jsonify({
         "status": "✅ online",
         "service": "BRONX ULTRA AI",
-        "developer": BOT_NAME,
+        "models": list(DISPLAY_NAMES.values()),
+        "developer": DEVELOPER,
         "timestamp": time.time()
     })
 
@@ -517,6 +533,7 @@ if __name__ == '__main__':
     print("=" * 60)
     print(f"🔥 BRONX ULTRA AI Chatbot")
     print(f"🤖 Bot Name: {BOT_NAME}")
-    print(f"📡 Model: DeepSeek-V4 (internally: {DEFAULT_MODEL})")
+    print(f"📡 Real Model: DeepSeek V4 Pro")
+    print(f"🎭 Display Name: Gemini 2.0 Flash")
     print("=" * 60)
     app.run(host='0.0.0.0', port=5000, debug=False)
