@@ -1,4 +1,4 @@
-# app.py - BRONX ULTRA AI Chatbot (Vercel + NVIDIA DeepSeek API)
+# app.py - BRONX ULTRA AI Chatbot (Vercel Fixed)
 from flask import Flask, request, jsonify, render_template_string, Response
 from openai import OpenAI
 import json
@@ -26,7 +26,7 @@ DISPLAY_NAMES = {
 
 DEFAULT_MODEL = "deepseek-ai/deepseek-v4-pro"
 
-# ============= HTML TEMPLATE (Compact for Vercel) =============
+# ============= HTML TEMPLATE =============
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -159,11 +159,13 @@ HTML_TEMPLATE = """
 
 def clean_response(text):
     """Clean sensitive info"""
+    if not text:
+        return "Sorry, I couldn't process that."
     text = re.sub(r'https?://[^\s]+', '', text)
     text = re.sub(r'[Nn]VIDIA[^\s]*', '', text)
     text = re.sub(r'deepseek[^\s]*', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\s+', ' ', text).strip()
-    return text
+    return text if text else "I'm not sure how to respond to that."
 
 def get_display_name(model_key):
     return DISPLAY_NAMES.get(model_key, "BRONX AI")
@@ -172,40 +174,47 @@ def get_display_name(model_key):
 
 @app.route('/')
 def home():
-    return render_template_string(
-        HTML_TEMPLATE,
-        bot_name=BOT_NAME,
-        models=DISPLAY_NAMES,
-        default_model=DEFAULT_MODEL,
-        current_model=DISPLAY_NAMES[DEFAULT_MODEL],
-        time=datetime.now().strftime("%I:%M %p")
-    )
+    try:
+        return render_template_string(
+            HTML_TEMPLATE,
+            bot_name=BOT_NAME,
+            models=DISPLAY_NAMES,
+            default_model=DEFAULT_MODEL,
+            current_model=DISPLAY_NAMES[DEFAULT_MODEL],
+            time=datetime.now().strftime("%I:%M %p")
+        )
+    except Exception as e:
+        return f"Error loading page: {str(e)}", 500
 
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+            
         user_message = data.get('message', '').strip()
         model_key = data.get('model', DEFAULT_MODEL)
         
         if not user_message:
             return jsonify({"error": "Message required"}), 400
         
-        # Call NVIDIA DeepSeek API
-        completion = client.chat.completions.create(
-            model=model_key,
-            messages=[{"role": "user", "content": user_message}],
-            temperature=1,
-            top_p=0.95,
-            max_tokens=16384,
-            extra_body={"chat_template_kwargs": {"thinking": False}},
-            stream=False
-        )
-        
-        bot_response = clean_response(completion.choices[0].message.content)
-        
-        if not bot_response:
-            bot_response = "I'm not sure how to respond to that. Could you rephrase?"
+        # Call NVIDIA DeepSeek API with timeout
+        try:
+            completion = client.chat.completions.create(
+                model=model_key,
+                messages=[{"role": "user", "content": user_message}],
+                temperature=1,
+                top_p=0.95,
+                max_tokens=16384,
+                extra_body={"chat_template_kwargs": {"thinking": False}},
+                stream=False
+            )
+            
+            bot_response = clean_response(completion.choices[0].message.content)
+            
+        except Exception as api_error:
+            bot_response = f"API Error: {str(api_error)[:100]}"
         
         return jsonify({
             "status": "success",
@@ -223,17 +232,17 @@ def chat():
 
 @app.route('/api', methods=['GET'])
 def api_get():
-    query = request.args.get('query', '')
-    model_key = request.args.get('model', DEFAULT_MODEL)
-    
-    if not query:
-        return jsonify({
-            "status": "error",
-            "message": "Usage: /api?query=Hello",
-            "developer": DEVELOPER
-        }), 400
-    
     try:
+        query = request.args.get('query', '')
+        model_key = request.args.get('model', DEFAULT_MODEL)
+        
+        if not query:
+            return jsonify({
+                "status": "error",
+                "message": "Usage: /api?query=Hello",
+                "developer": DEVELOPER
+            }), 400
+        
         completion = client.chat.completions.create(
             model=model_key,
             messages=[{"role": "user", "content": query}],
@@ -268,13 +277,8 @@ def health():
         "developer": DEVELOPER
     })
 
-# ============= VERCEL HANDLER =============
+# ❌ DELETE THIS OLD HANDLER - Ye crash kar raha tha
+# def handler(request, context):
+#     return app(request.environ, lambda x, y: None)
 
-# Ye function Vercel ke liye zaroori hai
-def handler(request, context):
-    return app(request.environ, lambda x, y: None)
-
-# For local development
-if __name__ == '__main__':
-    print("🔥 BRONX ULTRA AI - Vercel Version")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+# ✅ Kuch nahi chahiye neeche - Vercel automatically app ko handle karega
