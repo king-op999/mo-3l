@@ -1,6 +1,5 @@
-# app.py - BRONX ULTRA AI Chatbot (Vercel Fixed)
-from flask import Flask, request, jsonify, render_template_string, Response
-from openai import OpenAI
+from flask import Flask, request, jsonify, render_template_string
+import requests
 import json
 import time
 import re
@@ -8,17 +7,14 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# ============= CONFIG =============
+# ============= CONFIG (All in Code) =============
 BOT_NAME = "@BRONX_ULTRA"
 DEVELOPER = "@BRONX_ULTRA"
 
-# ✅ NVIDIA API Client
-client = OpenAI(
-    base_url="https://integrate.api.nvidia.com/v1",
-    api_key="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"
-)
+# NVIDIA API Key directly in code
+NVIDIA_API_KEY = "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"
 
-# ✅ Display names (Fake names for users)
+# Display names (Fake names)
 DISPLAY_NAMES = {
     "deepseek-ai/deepseek-v4-pro": "Gemini 2.0 Flash ⚡",
     "deepseek-ai/deepseek-r1": "DeepSeek R1 🧠"
@@ -26,259 +22,277 @@ DISPLAY_NAMES = {
 
 DEFAULT_MODEL = "deepseek-ai/deepseek-v4-pro"
 
-# ============= HTML TEMPLATE =============
-HTML_TEMPLATE = """
+# ============= HTML =============
+HTML = """
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BRONX ULTRA AI</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{background:linear-gradient(135deg,#0a0a0a,#1a0033);font-family:'Segoe UI',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
-        .chat-container{background:rgba(20,20,40,0.95);border:1px solid rgba(191,0,255,0.3);border-radius:24px;box-shadow:0 0 60px rgba(191,0,255,0.15);width:100%;max-width:800px;height:90vh;display:flex;flex-direction:column;overflow:hidden}
-        .chat-header{background:linear-gradient(90deg,rgba(191,0,255,0.2),rgba(0,200,255,0.2));padding:20px 30px;border-bottom:1px solid rgba(191,0,255,0.2);display:flex;justify-content:space-between;align-items:center}
-        .chat-header h1{font-size:20px;background:linear-gradient(90deg,#bf00ff,#00c8ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:700}
-        .badge{background:rgba(191,0,255,0.2);color:#bf00ff;padding:4px 14px;border-radius:20px;font-size:11px;border:1px solid rgba(191,0,255,0.3)}
-        .model-bar{padding:10px 24px;background:rgba(0,0,0,0.2);display:flex;align-items:center;gap:10px;font-size:12px;color:rgba(255,255,255,0.6)}
-        .model-bar select{background:rgba(255,255,255,0.05);border:1px solid rgba(191,0,255,0.2);color:#bf00ff;padding:6px 12px;border-radius:20px;font-size:12px;outline:none;cursor:pointer}
-        .chat-messages{flex:1;overflow-y:auto;padding:20px 30px;scroll-behavior:smooth}
-        .chat-messages::-webkit-scrollbar{width:4px}
-        .chat-messages::-webkit-scrollbar-track{background:rgba(255,255,255,0.05)}
-        .chat-messages::-webkit-scrollbar-thumb{background:#bf00ff;border-radius:10px}
-        .message{margin-bottom:16px;display:flex;align-items:flex-start;animation:fadeIn 0.3s ease}
-        @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-        .message.user{flex-direction:row-reverse}
-        .avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;margin:0 10px}
-        .message.bot .avatar{background:linear-gradient(135deg,#bf00ff,#6a00ff)}
-        .message.user .avatar{background:linear-gradient(135deg,#00c8ff,#0088ff)}
-        .bubble{max-width:75%;padding:12px 18px;border-radius:18px;word-wrap:break-word;line-height:1.6;font-size:14px}
-        .message.bot .bubble{background:rgba(255,255,255,0.07);color:#e0e0e0;border-bottom-left-radius:4px}
-        .message.user .bubble{background:linear-gradient(135deg,#bf00ff,#6a00ff);color:#fff;border-bottom-right-radius:4px}
-        .time{font-size:10px;opacity:0.4;margin-top:4px}
-        .typing{display:none;padding:12px 18px;background:rgba(255,255,255,0.07);border-radius:18px;max-width:60px;margin-bottom:16px}
-        .typing span{display:inline-block;width:8px;height:8px;background:#bf00ff;border-radius:50%;margin:0 2px;animation:typing 1.4s infinite}
+        body{background:linear-gradient(135deg,#0a0a0a,#1a1a2e);color:#fff;font-family:'Segoe UI',Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+        .main{background:rgba(20,20,40,0.95);border:1px solid rgba(191,0,255,0.3);border-radius:20px;max-width:700px;width:100%;padding:0;box-shadow:0 0 40px rgba(191,0,255,0.2);overflow:hidden}
+        .header{background:linear-gradient(90deg,rgba(191,0,255,0.2),rgba(0,200,255,0.2));padding:20px;text-align:center;border-bottom:1px solid rgba(191,0,255,0.2)}
+        .header h1{font-size:22px;background:linear-gradient(90deg,#bf00ff,#00c8ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+        .header p{font-size:11px;color:rgba(255,255,255,0.5);margin-top:5px}
+        .model-select{padding:10px 20px;background:rgba(0,0,0,0.3);display:flex;align-items:center;gap:10px;font-size:12px}
+        .model-select span{color:rgba(255,255,255,0.6)}
+        .model-select select{background:rgba(255,255,255,0.05);border:1px solid rgba(191,0,255,0.3);color:#bf00ff;padding:8px 15px;border-radius:20px;font-size:12px;outline:none;cursor:pointer;flex:1}
+        #chat-box{height:400px;overflow-y:auto;padding:20px;background:rgba(0,0,0,0.2)}
+        #chat-box::-webkit-scrollbar{width:4px}
+        #chat-box::-webkit-scrollbar-thumb{background:#bf00ff;border-radius:10px}
+        .msg{margin:10px 0;padding:12px 16px;border-radius:15px;max-width:80%;word-wrap:break-word;animation:slide 0.3s ease}
+        @keyframes slide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        .user-msg{background:linear-gradient(135deg,#bf00ff,#6a00ff);margin-left:auto;border-bottom-right-radius:4px}
+        .bot-msg{background:rgba(255,255,255,0.07);margin-right:auto;border-bottom-left-radius:4px}
+        .msg .time{font-size:10px;opacity:0.5;margin-top:5px;display:block}
+        .input-area{display:flex;gap:10px;padding:20px;background:rgba(0,0,0,0.3);border-top:1px solid rgba(255,255,255,0.05)}
+        .input-area input{flex:1;padding:12px 18px;background:rgba(255,255,255,0.05);border:1px solid rgba(191,0,255,0.2);border-radius:25px;color:#fff;font-size:14px;outline:none}
+        .input-area input:focus{border-color:#bf00ff;box-shadow:0 0 15px rgba(191,0,255,0.15)}
+        .input-area input::placeholder{color:rgba(255,255,255,0.3)}
+        .input-area button{padding:12px 25px;background:linear-gradient(90deg,#bf00ff,#6a00ff);border:none;border-radius:25px;color:#fff;font-weight:bold;cursor:pointer;transition:0.3s}
+        .input-area button:hover{transform:scale(1.05);box-shadow:0 0 20px rgba(191,0,255,0.3)}
+        .input-area button:disabled{opacity:0.5;transform:none;cursor:not-allowed}
+        .typing{display:none;padding:10px 16px;background:rgba(255,255,255,0.05);border-radius:15px;max-width:60px;margin:10px 0}
+        .typing span{display:inline-block;width:6px;height:6px;background:#bf00ff;border-radius:50%;margin:0 2px;animation:bounce 1.4s infinite}
         .typing span:nth-child(2){animation-delay:0.2s}
         .typing span:nth-child(3){animation-delay:0.4s}
-        @keyframes typing{0%,60%,100%{transform:translateY(0);opacity:0.4}30%{transform:translateY(-8px);opacity:1}}
-        .input-area{padding:16px 24px;border-top:1px solid rgba(255,255,255,0.06);display:flex;gap:12px;background:rgba(0,0,0,0.3)}
-        .input-area input{flex:1;padding:12px 18px;border:1px solid rgba(191,0,255,0.2);border-radius:50px;background:rgba(255,255,255,0.05);color:#fff;font-size:14px;outline:none;transition:all 0.3s}
-        .input-area input:focus{border-color:#bf00ff;box-shadow:0 0 20px rgba(191,0,255,0.15)}
-        .input-area input::placeholder{color:rgba(255,255,255,0.3)}
-        .input-area button{padding:12px 28px;border:none;border-radius:50px;background:linear-gradient(90deg,#bf00ff,#6a00ff);color:#fff;font-weight:600;font-size:14px;cursor:pointer;transition:all 0.3s;white-space:nowrap}
-        .input-area button:hover{transform:scale(1.04);box-shadow:0 0 30px rgba(191,0,255,0.3)}
-        .input-area button:disabled{opacity:0.5;cursor:not-allowed;transform:none}
-        .footer{text-align:center;padding:8px;font-size:11px;color:rgba(255,255,255,0.2);border-top:1px solid rgba(255,255,255,0.03)}
-        .footer span{color:#bf00ff}
-        @media(max-width:600px){.chat-container{height:95vh;border-radius:16px}.chat-header{padding:14px 18px}.chat-header h1{font-size:16px}.chat-messages{padding:14px 16px}.bubble{max-width:85%;font-size:13px;padding:10px 14px}.input-area{padding:12px 16px;gap:8px;flex-wrap:wrap}.input-area input{min-width:100%}.input-area button{width:100%}}
+        @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-8px)}}
+        @media(max-width:600px){.main{border-radius:15px}#chat-box{height:350px}.msg{max-width:90%}.input-area{flex-direction:column}.input-area button{width:100%}}
     </style>
 </head>
 <body>
-    <div class="chat-container">
-        <div class="chat-header">
-            <h1>🤖 BRONX AI</h1>
-            <span class="badge">⚡ {{ bot_name }}</span>
+    <div class="main">
+        <div class="header">
+            <h1>🤖 BRONX ULTRA AI</h1>
+            <p>Powered by Advanced AI</p>
         </div>
-        <div class="model-bar">
+        <div class="model-select">
             <span>🧠 Model:</span>
-            <select id="modelSelect" onchange="changeModel()">
-                {% for key, name in models.items() %}
-                <option value="{{ key }}" {% if key == default_model %}selected{% endif %}>{{ name }}</option>
-                {% endfor %}
+            <select id="modelSelect">
+                <option value="deepseek-ai/deepseek-v4-pro">Gemini 2.0 Flash ⚡</option>
+                <option value="deepseek-ai/deepseek-r1">DeepSeek R1 🧠</option>
             </select>
         </div>
-        <div class="chat-messages" id="messages">
-            <div class="message bot">
-                <div class="avatar">🤖</div>
-                <div class="bubble">
-                    Hey! I'm <strong>{{ bot_name }}</strong> 👋<br>
-                    Running on <strong>{{ current_model }}</strong><br>
-                    Ask me anything!
-                    <div class="time">{{ time }}</div>
-                </div>
+        <div id="chat-box">
+            <div class="msg bot-msg">
+                👋 Hey! I'm <b>BRONX ULTRA AI</b><br>
+                Ask me anything! I'm here to help.
+                <span class="time">Just now</span>
             </div>
             <div class="typing" id="typing"><span></span><span></span><span></span></div>
         </div>
         <div class="input-area">
-            <input type="text" id="input" placeholder="Type your message..." onkeydown="if(event.key==='Enter')sendMessage()">
+            <input type="text" id="userInput" placeholder="Type your message here..." onkeypress="if(event.key==='Enter')sendMessage()">
             <button onclick="sendMessage()">Send ✨</button>
         </div>
-        <div class="footer">⚡ {{ bot_name }} • {{ current_model }}</div>
     </div>
+
     <script>
-        const messages=document.getElementById('messages');
-        const input=document.getElementById('input');
-        const typing=document.getElementById('typing');
-        let currentModel=document.getElementById('modelSelect').value;
-        function changeModel(){
-            currentModel=document.getElementById('modelSelect').value;
-            const name=document.getElementById('modelSelect').selectedOptions[0].text;
-            document.querySelector('.footer').innerHTML='⚡ {{ bot_name }} • '+name;
-        }
-        function addMessage(text,sender){
-            const div=document.createElement('div');
-            div.className='message '+sender;
-            div.innerHTML='<div class="avatar">'+(sender==='bot'?'🤖':'👤')+'</div><div class="bubble">'+text+'<div class="time">'+new Date().toLocaleTimeString()+'</div></div>';
-            messages.insertBefore(div,typing);
-            messages.scrollTop=messages.scrollHeight;
-        }
         async function sendMessage(){
-            const text=input.value.trim();
-            if(!text)return;
-            input.disabled=true;
-            document.querySelector('button').disabled=true;
-            addMessage(text,'user');
-            input.value='';
-            typing.style.display='block';
-            messages.scrollTop=messages.scrollHeight;
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+            if(!message) return;
+            
+            const chatBox = document.getElementById('chat-box');
+            const typing = document.getElementById('typing');
+            const model = document.getElementById('modelSelect').value;
+            
+            // Add user message
+            chatBox.insertBefore(createMessage(message, 'user'), typing);
+            input.value = '';
+            document.querySelector('button').disabled = true;
+            
+            // Show typing
+            typing.style.display = 'block';
+            chatBox.scrollTop = chatBox.scrollHeight;
+            
             try{
-                const response=await fetch('/chat',{
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({message:text,model:currentModel})
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: message, model: model})
                 });
-                const data=await response.json();
-                typing.style.display='none';
-                addMessage(data.response,'bot');
+                const data = await response.json();
+                
+                typing.style.display = 'none';
+                chatBox.insertBefore(createMessage(data.response, 'bot'), typing);
             }catch(error){
-                typing.style.display='none';
-                addMessage('❌ Error: '+error.message,'bot');
-            }finally{
-                input.disabled=false;
-                document.querySelector('button').disabled=false;
-                input.focus();
+                typing.style.display = 'none';
+                chatBox.insertBefore(createMessage('❌ Error: Could not connect to server', 'bot'), typing);
             }
+            
+            document.querySelector('button').disabled = false;
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+        
+        function createMessage(text, type){
+            const div = document.createElement('div');
+            div.className = 'msg ' + type + '-msg';
+            const time = new Date().toLocaleTimeString();
+            div.innerHTML = text + '<span class="time">' + time + '</span>';
+            return div;
         }
     </script>
 </body>
 </html>
 """
 
-# ============= HELPERS =============
+# ============= HELPER FUNCTIONS =============
 
-def clean_response(text):
-    """Clean sensitive info"""
+def call_deepseek_api(message, model="deepseek-ai/deepseek-v4-pro"):
+    """Call NVIDIA DeepSeek API"""
+    try:
+        url = "https://integrate.api.nvidia.com/v1/chat/completions"
+        
+        headers = {
+            "Authorization": f"Bearer {NVIDIA_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": message}],
+            "temperature": 1,
+            "top_p": 0.95,
+            "max_tokens": 16384
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        
+        if response.status_code == 200:
+            data = response.json()
+            content = data['choices'][0]['message']['content']
+            return clean_text(content)
+        else:
+            error_msg = f"API returned status {response.status_code}"
+            try:
+                error_data = response.json()
+                error_msg = error_data.get('error', {}).get('message', error_msg)
+            except:
+                pass
+            return f"⚠️ {error_msg}"
+            
+    except requests.exceptions.Timeout:
+        return "⏳ Request timed out. Please try again."
+    except requests.exceptions.ConnectionError:
+        return "🔌 Connection error. Please check your internet."
+    except Exception as e:
+        return f"⚠️ Error: {str(e)[:150]}"
+
+def clean_text(text):
+    """Clean response text"""
     if not text:
-        return "Sorry, I couldn't process that."
-    text = re.sub(r'https?://[^\s]+', '', text)
-    text = re.sub(r'[Nn]VIDIA[^\s]*', '', text)
-    text = re.sub(r'deepseek[^\s]*', '', text, flags=re.IGNORECASE)
+        return "I couldn't generate a response. Please try again."
+    
+    # Remove URLs
+    text = re.sub(r'https?://\S+', '', text)
+    # Remove sensitive words
+    text = re.sub(r'(?i)nvidia|deepseek|api key|nvapi', '', text)
+    # Clean spaces
     text = re.sub(r'\s+', ' ', text).strip()
-    return text if text else "I'm not sure how to respond to that."
+    
+    return text if text else "I couldn't generate a response. Please try again."
 
-def get_display_name(model_key):
-    return DISPLAY_NAMES.get(model_key, "BRONX AI")
-
-# ============= ROUTES =============
+# ============= API ROUTES =============
 
 @app.route('/')
 def home():
-    try:
-        return render_template_string(
-            HTML_TEMPLATE,
-            bot_name=BOT_NAME,
-            models=DISPLAY_NAMES,
-            default_model=DEFAULT_MODEL,
-            current_model=DISPLAY_NAMES[DEFAULT_MODEL],
-            time=datetime.now().strftime("%I:%M %p")
-        )
-    except Exception as e:
-        return f"Error loading page: {str(e)}", 500
+    """Main page"""
+    return render_template_string(HTML)
 
 @app.route('/chat', methods=['POST'])
 def chat():
+    """Chat endpoint"""
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-            
-        user_message = data.get('message', '').strip()
-        model_key = data.get('model', DEFAULT_MODEL)
+        data = request.get_json(silent=True) or {}
+        message = data.get('message', '').strip()
+        model = data.get('model', DEFAULT_MODEL)
         
-        if not user_message:
-            return jsonify({"error": "Message required"}), 400
+        if not message:
+            return jsonify({
+                "status": "error",
+                "response": "Please enter a message."
+            }), 400
         
-        # Call NVIDIA DeepSeek API with timeout
-        try:
-            completion = client.chat.completions.create(
-                model=model_key,
-                messages=[{"role": "user", "content": user_message}],
-                temperature=1,
-                top_p=0.95,
-                max_tokens=16384,
-                extra_body={"chat_template_kwargs": {"thinking": False}},
-                stream=False
-            )
-            
-            bot_response = clean_response(completion.choices[0].message.content)
-            
-        except Exception as api_error:
-            bot_response = f"API Error: {str(api_error)[:100]}"
+        # Call DeepSeek API
+        response = call_deepseek_api(message, model)
         
         return jsonify({
             "status": "success",
-            "response": bot_response,
-            "model": get_display_name(model_key),
+            "response": response,
+            "model": DISPLAY_NAMES.get(model, "AI Model"),
             "developer": DEVELOPER
         })
         
     except Exception as e:
         return jsonify({
             "status": "error",
-            "response": "⚠️ Service busy. Try again.",
-            "developer": DEVELOPER
+            "response": f"Server error: {str(e)[:100]}"
         }), 500
 
 @app.route('/api', methods=['GET'])
-def api_get():
-    try:
-        query = request.args.get('query', '')
-        model_key = request.args.get('model', DEFAULT_MODEL)
-        
-        if not query:
-            return jsonify({
-                "status": "error",
-                "message": "Usage: /api?query=Hello",
-                "developer": DEVELOPER
-            }), 400
-        
-        completion = client.chat.completions.create(
-            model=model_key,
-            messages=[{"role": "user", "content": query}],
-            temperature=1,
-            top_p=0.95,
-            max_tokens=16384,
-            extra_body={"chat_template_kwargs": {"thinking": False}},
-            stream=False
-        )
-        
-        response_text = clean_response(completion.choices[0].message.content)
-        
-        return jsonify({
-            "status": "success",
-            "developer": DEVELOPER,
-            "model": get_display_name(model_key),
-            "query": query,
-            "response": response_text
-        })
-    except Exception as e:
+def api_endpoint():
+    """Public API endpoint"""
+    query = request.args.get('query', '').strip()
+    model = request.args.get('model', DEFAULT_MODEL)
+    
+    if not query:
         return jsonify({
             "status": "error",
-            "message": "Service error",
+            "message": "Missing 'query' parameter. Use: /api?query=YourQuestion",
+            "example": "/api?query=What is AI?",
             "developer": DEVELOPER
-        }), 500
-
-@app.route('/health')
-def health():
+        }), 400
+    
+    response = call_deepseek_api(query, model)
+    
     return jsonify({
-        "status": "✅ online",
-        "models": list(DISPLAY_NAMES.values()),
+        "status": "success",
+        "query": query,
+        "response": response,
+        "model": DISPLAY_NAMES.get(model, "AI Model"),
         "developer": DEVELOPER
     })
 
-# ❌ DELETE THIS OLD HANDLER - Ye crash kar raha tha
-# def handler(request, context):
-#     return app(request.environ, lambda x, y: None)
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check"""
+    return jsonify({
+        "status": "healthy",
+        "service": "BRONX ULTRA AI",
+        "models": list(DISPLAY_NAMES.values()),
+        "developer": DEVELOPER,
+        "timestamp": datetime.now().isoformat()
+    })
 
-# ✅ Kuch nahi chahiye neeche - Vercel automatically app ko handle karega
+@app.route('/test', methods=['GET'])
+def test():
+    """Test API connection"""
+    test_response = call_deepseek_api("Hello", DEFAULT_MODEL)
+    return jsonify({
+        "test": "completed",
+        "response": test_response,
+        "api_connected": "unknown" not in test_response.lower()
+    })
+
+# ============= ERROR HANDLERS =============
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"error": "Endpoint not found", "try": "/api?query=hello"}), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({"error": "Internal server error"}), 500
+
+# ============= MAIN =============
+if __name__ == '__main__':
+    print("=" * 50)
+    print("🔥 BRONX ULTRA AI Started!")
+    print(f"🤖 Developer: {DEVELOPER}")
+    print(f"📡 Models: {list(DISPLAY_NAMES.values())}")
+    print("=" * 50)
+    app.run(host='0.0.0.0', port=5000, debug=False)
