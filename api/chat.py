@@ -1,49 +1,29 @@
-from flask import Flask, request, jsonify, render_template_string
-import requests
+from flask import Flask, request, jsonify
+import google.generativeai as genai
+import os
 
 app = Flask(__name__)
 CREDIT = "@BRONX_ULTRA"
 
-# HTML page that auto-answers via Puter.js
-HTML = """
-<!DOCTYPE html>
-<html>
-<body>
-<script src="https://js.puter.com/v2.js"></script>
-<div id="result" style="color:white;font-family:monospace;padding:20px;background:#000814;min-height:100vh;white-space:pre-wrap;font-size:14px;">Loading...</div>
-<script>
-(async () => {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const query = params.get('query') || params.get('q') || 'hello';
-    
-    const resp = await puter.ai.chat(query, {
-      model: 'gemini-2.5-flash',
-      stream: true
-    });
-    
-    var full = '';
-    for await (const part of resp) {
-      if (part?.text) {
-        full += part.text;
-        document.getElementById('result').textContent = full;
-      }
-    }
-    
-    if (!full) {
-      document.getElementById('result').textContent = 'No response generated.';
-    }
-  } catch(e) {
-    document.getElementById('result').textContent = 'Error: ' + e.message;
-  }
-})();
-</script>
-</body>
-</html>
-"""
+# ✅ GOOGLE GEMINI API KEY (FREE)
+GEMINI_API_KEY = "AIzaSyDVeHi5bE-AQ8nLomYF6GGxjxUB4_5JqHc"  # Public free key
+genai.configure(api_key=GEMINI_API_KEY)
+
+# Gemini model
+model = genai.GenerativeModel('gemini-2.0-flash')
+
+@app.route('/')
+def home():
+    return jsonify({
+        "api": "BRONX GEMINI AI V9",
+        "engine": "Google Gemini 2.0 Flash",
+        "usage": "/api?query=your+question",
+        "example": "/api?query=hello+how+are+you",
+        "credit": CREDIT
+    })
 
 @app.route('/api')
-def api_json():
+def api():
     query = request.args.get('query', '').strip()
     if not query: query = request.args.get('q', '').strip()
     
@@ -54,33 +34,59 @@ def api_json():
             "example": f"{request.host_url.rstrip('/')}/api?query=hello"
         }), 400
     
-    # Return direct page that auto-answers
-    return render_template_string(HTML), 200, {'Content-Type': 'text/html; charset=utf-8'}
-
-@app.route('/')
-def home():
-    return jsonify({
-        "api": "BRONX GEMINI AI V7",
-        "engine": "Google Gemini 2.5 Flash via Puter.js",
-        "endpoints": {
-            "json_info": "/",
-            "text_answer": "/api?query=hello",
-            "test": "/test"
-        },
-        "credit": CREDIT
-    })
+    # ✅ REAL GOOGLE GEMINI API CALL
+    try:
+        response = model.generate_content(query)
+        answer = response.text.strip()
+        
+        if not answer:
+            answer = "No response generated. Please try again."
+        
+        return jsonify({
+            "status": "success",
+            "query": query,
+            "response": answer,
+            "model": "Google Gemini 2.0 Flash",
+            "credit": CREDIT
+        })
+        
+    except Exception as e:
+        error_msg = str(e)[:100]
+        # Fallback to Pollinations if Gemini fails
+        try:
+            import requests
+            url = f"https://text.pollinations.ai/{query}?model=openai"
+            resp = requests.get(url, timeout=30)
+            answer = resp.text.strip()
+            return jsonify({
+                "status": "success",
+                "query": query,
+                "response": answer,
+                "model": "AI (Fallback)",
+                "credit": CREDIT
+            })
+        except:
+            return jsonify({
+                "status": "error",
+                "query": query,
+                "response": f"Service temporarily unavailable. Please try again.",
+                "credit": CREDIT
+            }), 500
 
 @app.route('/test')
 def test():
     return jsonify({
-        "status": "✅ ONLINE",
-        "engine": "Puter.js Gemini 2.5 Flash",
-        "usage": "/api?query=your+question",
+        "status": "✅ BRONX GEMINI V9 ONLINE",
+        "engine": "Google Gemini 2.0 Flash",
+        "api": "/api?query=hello",
         "credit": CREDIT
     })
 
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"error": "Not found", "api": "/api?query=hello"}), 404
+
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
-    print(f"🤖 BRONX GEMINI V7 on port {port}")
+    print(f"🤖 BRONX GEMINI V9 on port {port}")
     app.run(host='0.0.0.0', port=port)
