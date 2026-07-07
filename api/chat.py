@@ -119,22 +119,15 @@ async function send(){
 </html>
 """
 
-# ============ ROUTES ============
 @app.route('/')
 def home():
     return render_template_string(HTML)
 
 @app.route('/api')
 def api_endpoint():
-    # ✅ SPACE SUPPORT – Get full query from URL
     query = request.args.get('query', '').strip()
-    
-    # Also support 'q' and 'msg' parameters
-    if not query:
-        query = request.args.get('q', '').strip()
-    if not query:
-        query = request.args.get('msg', '').strip()
-    
+    if not query: query = request.args.get('q', '').strip()
+    if not query: query = request.args.get('msg', '').strip()
     model_key = request.args.get('model', DEFAULT_MODEL)
     
     if not query:
