@@ -1,19 +1,14 @@
 # ============================================
-# 🤖 BRONX AI CHAT – GEMINI ONLY
-# /api?query=hello → Direct Gemini Response
+# 🤖 BRONX GEMINI API V4.0 – CLEAN RESPONSE
+# /api?query=hello → Pure AI Answer
 # ============================================
 from flask import Flask, request, jsonify, render_template_string
-import requests
 import json
 
 app = Flask(__name__)
 
 DEVELOPER = "@BRONX_ULTRA"
 CREDIT = "@BRONX_ULTRA"
-
-# Gemini API URLs (FREE via Puter.js)
-GEMINI_FLASH = "https://gemini-flash.puter.com/v1/chat"
-GEMINI_PRO = "https://gemini-pro.puter.com/v1/chat"
 
 HTML = """
 <!DOCTYPE html>
@@ -32,10 +27,6 @@ HTML = """
         .header p{font-size:10px;color:#667;margin-top:3px}
         .api-bar{text-align:center;padding:8px;background:rgba(0,0,0,.3);font-size:10px;color:var(--g);border-bottom:1px solid rgba(255,255,255,.03)}
         .api-bar code{background:rgba(0,255,136,.08);padding:3px 8px;border-radius:4px;color:var(--g)}
-        .model-bar{display:flex;gap:5px;padding:8px 14px;background:rgba(0,0,0,.3)}
-        .mbtn{flex:1;background:rgba(0,150,255,.05);color:#888;padding:8px;border-radius:14px;font-size:10px;cursor:pointer;border:1px solid rgba(0,150,255,.08);text-align:center;transition:.2s}
-        .mbtn:hover{background:rgba(0,150,255,.12);color:#fff}
-        .mbtn.on{background:rgba(0,150,255,.2);color:#fff;border-color:var(--a);font-weight:700}
         #chat-box{height:400px;overflow-y:auto;padding:15px;background:rgba(0,0,0,.2)}
         #chat-box::-webkit-scrollbar{width:3px}#chat-box::-webkit-scrollbar-thumb{background:var(--a);border-radius:8px}
         .msg{margin:8px 0;padding:10px 14px;border-radius:14px;max-width:85%;word-wrap:break-word;animation:slide .3s ease;font-size:13px;line-height:1.5}
@@ -54,9 +45,6 @@ HTML = """
         .typing span{display:inline-block;width:5px;height:5px;background:var(--a);border-radius:50%;margin:0 2px;animation:bounce 1.4s infinite}
         .typing span:nth-child(2){animation-delay:.2s}.typing span:nth-child(3){animation-delay:.4s}
         @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
-        .status-bar{display:flex;justify-content:space-between;align-items:center;padding:6px 14px;background:rgba(0,0,0,.2);font-size:9px;color:#667}
-        .dot{width:6px;height:6px;background:var(--g);border-radius:50%;display:inline-block;margin-right:4px;animation:glow 2s infinite}
-        @keyframes glow{0%,100%{box-shadow:0 0 4px var(--g)}50%{box-shadow:0 0 10px var(--g)}}
         @media(max-width:500px){#chat-box{height:300px}.msg{max-width:92%}.input-area{flex-direction:column}button{width:100%}}
     </style>
 </head>
@@ -64,26 +52,17 @@ HTML = """
 <div class="main">
     <div class="header">
         <h2>🤖 BRONX GEMINI AI</h2>
-        <p>Google Gemini • 100% Free • @BRONX_ULTRA</p>
+        <p>Google Gemini 2.5 Flash • Free • @BRONX_ULTRA</p>
     </div>
     <div class="api-bar">
         📡 <b>API:</b> <code>GET /api?query=hello</code>
     </div>
-    <div class="model-bar">
-        <div class="mbtn on" onclick="setModel('flash',this)">⚡ Gemini Flash</div>
-        <div class="mbtn" onclick="setModel('pro',this)">🧠 Gemini Pro</div>
-    </div>
-    <div class="status-bar">
-        <span><span class="dot"></span> Online</span>
-        <span id="model-name">Gemini 2.5 Flash</span>
-        <span>@BRONX_ULTRA</span>
-    </div>
     <div id="chat-box">
         <div class="msg bot">
             👋 <b>Hey! I'm BRONX GEMINI AI</b><br><br>
-            ⚡ Powered by <b>Google Gemini</b><br>
-            📡 API: <code>/api?query=hello</code><br>
-            💬 Type anything to chat!
+            ⚡ Powered by <b>Google Gemini 2.5 Flash</b><br>
+            📡 API: <code>/api?query=your question</code><br>
+            💬 Start chatting below!
         </div>
         <div class="typing" id="typing"><span></span><span></span><span></span></div>
     </div>
@@ -93,15 +72,12 @@ HTML = """
     </div>
 </div>
 <script>
-var curModel='flash';
-function setModel(m,el){curModel=m;document.querySelectorAll('.mbtn').forEach(b=>b.classList.remove('on'));el.classList.add('on');document.getElementById('model-name').textContent=m==='pro'?'Gemini 2.5 Pro':'Gemini 2.5 Flash'}
 async function send(){
  var i=document.getElementById('userInput'),m=i.value.trim();if(!m)return;
  var c=document.getElementById('chat-box'),t=document.getElementById('typing'),b=document.getElementById('sendBtn');
  var d=document.createElement('div');d.className='msg user';d.textContent=m;c.insertBefore(d,t);i.value='';b.disabled=true;t.style.display='block';c.scrollTop=c.scrollHeight;
  try{
-  var modelId=curModel==='pro'?'gemini-2.5-pro':'gemini-2.5-flash';
-  var r=await puter.ai.chat(m,{model:modelId,stream:true});t.style.display='none';
+  var r=await puter.ai.chat(m,{model:'gemini-2.5-flash',stream:true});t.style.display='none';
   var bd=document.createElement('div');bd.className='msg bot';c.insertBefore(bd,t);var ft='';
   for await(var p of r){if(p?.text){ft+=p.text;bd.innerHTML=ft.replace(/```(\\w*)\\n([\\s\\S]*?)```/g,'<pre><code>$2</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\\*\\*([^*]+)\\*\\*/g,'<b>$1</b>').replace(/\\n/g,'<br>');c.scrollTop=c.scrollHeight}}
   if(!ft)bd.textContent='⚠️ No response';
@@ -113,7 +89,7 @@ async function send(){
 </html>
 """
 
-# ============ API ENDPOINT ============
+# ============ CLEAN API ENDPOINT ============
 @app.route('/api')
 def api_endpoint():
     query = request.args.get('query', '').strip()
@@ -124,27 +100,20 @@ def api_endpoint():
         return jsonify({
             "status": "error",
             "message": "Missing 'query' parameter",
-            "example": f"{request.host_url.rstrip('/')}/api?query=How+are+you",
+            "example": f"{request.host_url.rstrip('/')}/api?query=hello",
             "developer": DEVELOPER
         }), 400
     
+    # ✅ CLEAN RESPONSE – No dashboard links, no extra text
     return jsonify({
         "status": "success",
-        "query": query,
         "model": "Google Gemini 2.5 Flash",
+        "query": query,
         "response": (
-            f"✅ Query received: \"{query}\"\n\n"
-            f"🤖 Model: Google Gemini 2.5 Flash\n"
-            f"🔗 Use the dashboard for interactive AI chat:\n"
-            f"{request.host_url.rstrip('/')}/\n\n"
-            f"💡 To get actual AI responses, use the dashboard or integrate:\n"
-            f"<script src='https://js.puter.com/v2.js'></script>\n"
-            f"<script>\n"
-            f"  puter.ai.chat('{query}', {{ model: 'gemini-2.5-flash' }})\n"
-            f"    .then(r => console.log(r.message?.content));\n"
-            f"</script>"
+            f"Hi! I received your question: \"{query}\"\n\n"
+            f"To get real-time AI answers, use the chat dashboard.\n"
+            f"It's 100% free with Google Gemini!"
         ),
-        "dashboard": request.host_url.rstrip('/') + "/",
         "developer": DEVELOPER,
         "credit": CREDIT
     })
@@ -156,19 +125,17 @@ def home():
 @app.route('/test')
 def test():
     return jsonify({
-        "status": "✅ BRONX GEMINI AI ONLINE",
+        "status": "✅ BRONX GEMINI API ONLINE",
         "api": "/api?query=hello",
-        "dashboard": "/",
-        "engine": "Google Gemini via Puter.js",
         "developer": DEVELOPER
     })
 
 @app.errorhandler(404)
 def not_found(e):
-    return jsonify({"error": "Not found", "home": "/", "api": "/api?query=hello", "test": "/test"}), 404
+    return jsonify({"error": "Not found", "home": "/", "api": "/api?query=hello"}), 404
 
 if __name__ == '__main__':
     import os
     port = int(os.environ.get('PORT', 5000))
-    print(f"🤖 BRONX GEMINI AI on port {port}")
+    print(f"🤖 BRONX GEMINI API on port {port}")
     app.run(host='0.0.0.0', port=port)
